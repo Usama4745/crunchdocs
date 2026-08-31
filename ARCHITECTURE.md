@@ -54,8 +54,10 @@ the service-role key and enforce access in one well-tested module. I chose (b):
 
 - `lib/access.ts::resolveAccess` is a **pure function** — the entire
   authz policy in ~15 lines, exhaustively unit-tested.
-- `lib/documents.ts` is the only module that talks to Supabase, and every read
-  and write funnels through `resolveAccess` / `requireAccess`.
+- `lib/authz.ts::getDocAccess` / `assertAccess` wrap it with the doc+shares
+  query and a capability check (`view` / `edit` / `manage`). Every
+  Supabase-touching module — `documents`, `versions`, `comments`, `presence` —
+  routes through it, so a new feature can't accidentally skip the check.
 - RLS is still **enabled with no policies**, so the anon/public key can't touch
   the tables even if it leaked.
 
@@ -137,6 +139,38 @@ call it.
 Both exports are available to anyone with read access, including view-only
 collaborators.
 
+### Live collaboration
+
+Three features, kept deliberately simple so they fit the same
+Postgres + Server Actions model as everything else.
+
+- **Presence** (`lib/presence.ts`, `docs_document_presence`). Each open document
+  page runs a ~10s heartbeat Server Action that upserts one row per
+  `(document, user)` and returns everyone with `last_seen` in the last 30s.
+  Chosen over **Supabase Realtime** because Realtime would mean shipping a
+  browser Supabase client + the anon key and taking on a websocket dependency
+  for what is a cosmetic indicator. Polling is ~4 small indexed queries per
+  viewer per 10s and needs zero new infrastructure. The heartbeat also sweeps
+  rows older than 5 minutes, and the client best-effort deletes its row on
+  `pagehide` / unmount.
+
+- **Comments** (`lib/comments.ts`, `docs_comments`). A single document-level
+  thread, **not** anchored to text ranges — range anchoring against a
+  `contentEditable` surface that also autosaves is fragile (offsets drift on
+  every edit) and well beyond scope. Any user with read access can comment
+  (that's the point of view access); the comment's author or the document owner
+  can resolve/reopen or delete. `canModerate` is computed per-viewer server-side
+  so the client never decides permissions.
+
+- **Version history** (`lib/versions.ts`, `docs_document_versions`). An
+  append-only snapshot log. `updateDocumentContent` calls `maybeAutoSnapshot`
+  after every write, which inserts a row only if the content changed **and** the
+  last snapshot is >3 min old — so autosave doesn't create thousands of
+  versions. Users can also save a labelled version explicitly. **Restore**
+  snapshots the current content first (`"Before restore"`) then overwrites, so
+  it's reversible; the editor holds its own DOM, so the client navigates/reloads
+  afterwards to pick up the change.
+
 ## Testing strategy
 
 Unit tests target the pure, high-risk logic where a bug is silent and
@@ -151,8 +185,12 @@ for the time budget.
 ## If I had more time
 
 - Supabase Auth + real RLS policies (magic-link is low-friction).
-- Realtime presence / CRDT so concurrent editors don't last-write-wins.
+- Swap polled presence for Supabase Realtime, and add CRDT/OT so body edits
+  merge instead of last-write-wins.
+- Anchor comments to text ranges, and add a real suggestion mode.
 - Round-trip `.docx` fixtures through a test (the binary path is currently
   covered only indirectly, via the sanitizer).
-- Optimistic UI for rename/share and a toast system instead of inline text.
-- E2E test (Playwright) covering the share → sign-in-as → see-shared-doc loop.
+- Optimistic UI for rename/share/comments and a toast system instead of inline
+  text; diff view between versions.
+- E2E test (Playwright) covering the share → sign-in-as → see-shared-doc loop
+  and the comment / restore flows.

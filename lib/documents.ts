@@ -1,7 +1,9 @@
 import "server-only";
 import { getSupabaseAdmin } from "./supabase";
 import { resolveAccess, canEdit, canManage } from "./access";
+import { AppError, getDocAccess } from "./authz";
 import { sanitizeHtml } from "./sanitize";
+import { maybeAutoSnapshot } from "./versions";
 import type {
   DocumentRow,
   DocumentWithAccess,
@@ -10,17 +12,7 @@ import type {
   User,
 } from "./types";
 
-export class AppError extends Error {
-  code:
-    | "not_found"
-    | "forbidden"
-    | "bad_request"
-    | "conflict";
-  constructor(code: AppError["code"], message: string) {
-    super(message);
-    this.code = code;
-  }
-}
+export { AppError };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -207,29 +199,8 @@ export async function getDocumentForUser(
 
 /** Access level only, for cheap checks inside mutations. */
 async function requireAccess(docId: string, userId: string) {
-  const db = getSupabaseAdmin();
-  const docRes = await db
-    .from("docs_documents")
-    .select("id, owner_id")
-    .eq("id", docId)
-    .maybeSingle();
-  if (docRes.error) throw new AppError("bad_request", docRes.error.message);
-  const doc = docRes.data as { id: string; owner_id: string } | null;
-  if (!doc) throw new AppError("not_found", "Document not found.");
-
-  const sharesRes = await db
-    .from("docs_document_shares")
-    .select("user_id, permission")
-    .eq("document_id", docId);
-  if (sharesRes.error) throw new AppError("bad_request", sharesRes.error.message);
-
-  const access = resolveAccess({
-    userId,
-    ownerId: doc.owner_id,
-    shares: (sharesRes.data ?? []) as { user_id: string; permission: Permission }[],
-  });
-  if (!access) throw new AppError("not_found", "Document not found.");
-  return { doc, access };
+  const { documentId, ownerId, access } = await getDocAccess(docId, userId);
+  return { doc: { id: documentId, owner_id: ownerId }, access };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,10 +236,14 @@ export async function updateDocumentContent(
     .from("docs_documents")
     .update({ content_html, updated_at: new Date().toISOString() })
     .eq("id", docId)
-    .select("updated_at")
+    .select("updated_at, title")
     .single();
   if (error) throw new AppError("bad_request", error.message);
-  return data as { updated_at: string };
+
+  const row = data as { updated_at: string; title: string };
+  // Throttled snapshot so version history has periodic restore points.
+  await maybeAutoSnapshot(docId, row.title, content_html, userId);
+  return { updated_at: row.updated_at };
 }
 
 export async function renameDocument(

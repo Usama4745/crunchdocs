@@ -40,6 +40,46 @@ create table if not exists public.docs_document_shares (
 
 create index if not exists docs_document_shares_user_id_idx on public.docs_document_shares (user_id);
 
+-- Version history: an append-only log of content snapshots per document.
+create table if not exists public.docs_document_versions (
+  id           uuid primary key default gen_random_uuid(),
+  document_id  uuid not null references public.docs_documents (id) on delete cascade,
+  title        text not null,
+  content_html text not null,
+  note         text,
+  created_by   uuid references public.docs_users (id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists docs_document_versions_doc_idx
+  on public.docs_document_versions (document_id, created_at desc);
+
+-- Document-level comment thread.
+create table if not exists public.docs_comments (
+  id          uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.docs_documents (id) on delete cascade,
+  author_id   uuid not null references public.docs_users (id) on delete cascade,
+  body        text not null,
+  resolved    boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists docs_comments_doc_idx
+  on public.docs_comments (document_id, created_at);
+
+-- Lightweight presence: one heartbeat row per (document, user), polled by
+-- clients every ~10s for "who's here" indicators.
+create table if not exists public.docs_document_presence (
+  document_id uuid not null references public.docs_documents (id) on delete cascade,
+  user_id     uuid not null references public.docs_users (id) on delete cascade,
+  mode        text not null default 'viewing' check (mode in ('viewing', 'editing')),
+  last_seen   timestamptz not null default now(),
+  primary key (document_id, user_id)
+);
+
+create index if not exists docs_document_presence_seen_idx
+  on public.docs_document_presence (document_id, last_seen);
+
 -- ---------------------------------------------------------------------------
 -- updated_at maintenance
 -- ---------------------------------------------------------------------------
@@ -65,9 +105,12 @@ create trigger docs_documents_touch_updated_at
 -- that the anon/public key cannot read or write these tables directly.
 -- ---------------------------------------------------------------------------
 
-alter table public.docs_users            enable row level security;
-alter table public.docs_documents        enable row level security;
-alter table public.docs_document_shares  enable row level security;
+alter table public.docs_users              enable row level security;
+alter table public.docs_documents          enable row level security;
+alter table public.docs_document_shares    enable row level security;
+alter table public.docs_document_versions  enable row level security;
+alter table public.docs_comments           enable row level security;
+alter table public.docs_document_presence  enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- Seed accounts (for the "sign in as" demo flow)

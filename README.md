@@ -65,6 +65,24 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 - Sharing state is queried on every load, so revoking access takes effect
   immediately.
 
+### 5. Live collaboration
+
+- **Presence indicators** in the document header show who else is on the
+  document right now, as stacked initials with an "editing" ring, updated by a
+  ~10s heartbeat. (Polling, not websockets — see ARCHITECTURE.md.)
+- **Comments** — a document-level thread in the **Comments** menu. Anyone with
+  access can comment (including view-only). The comment's author or the
+  document owner can resolve/reopen or delete it. An open-count badge sits on
+  the button.
+- **Version history** — snapshots are captured automatically as you edit
+  (throttled to one per ~3 minutes) and you can save a labelled version at any
+  time. The **History** menu lists them; **Preview** opens a read-only snapshot
+  at `/doc/[id]/version/[versionId]`, and **Restore** rolls the document back
+  (snapshotting the current state first, so a restore is itself undoable).
+
+> Suggestion / tracked-changes mode is not implemented; commenting covers the
+> "comment or suggest" requirement.
+
 ---
 
 ## Tech stack
@@ -80,6 +98,7 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 | `.docx` import | `mammoth`                                                       |
 | `.docx` export | `html-to-docx`                                                 |
 | PDF export     | browser print-to-PDF (`/doc/[id]/print` + `window.print()`)     |
+| Presence       | polled heartbeat table (~10s), no websockets                    |
 | Tests          | Vitest                                                          |
 | Deployment     | Vercel (any Node host works)                                    |
 
@@ -100,12 +119,14 @@ npm install
 
 ### 2. Create the database schema
 In the Supabase dashboard, open **SQL Editor** and run the contents of
-[`supabase/schema.sql`](./supabase/schema.sql). It creates the `docs_users`,
-`docs_documents`, and `docs_document_shares` tables (all prefixed with `docs_`
+[`supabase/schema.sql`](./supabase/schema.sql). It creates the `docs_`-prefixed
+tables (`docs_users`, `docs_documents`, `docs_document_shares`,
+`docs_document_versions`, `docs_comments`, `docs_document_presence` — prefixed
 so they can share a Supabase project with other tables), an `updated_at`
 trigger, enables RLS (the app uses the service role key and enforces access in
 application code), and seeds the three demo accounts. The script is safe to
-re-run.
+re-run — **re-run it after pulling this change** to add the collaboration
+tables.
 
 ### 3. Configure environment variables
 ```bash
@@ -186,19 +207,24 @@ app/
   actions.ts                  Server Actions (auth, CRUD, sharing, import)
   page.tsx                    Dashboard: owned vs. shared documents
   login/page.tsx              Sign-in
-  doc/[id]/page.tsx           Editor / read-only viewer + sharing + tools
+  doc/[id]/page.tsx           Editor / viewer + header (presence, comments, history, share, tools)
   doc/[id]/print/page.tsx     Clean print view (browser "Save as PDF")
-  doc/[id]/export/docx/route.ts  Download the document as .docx
+  doc/[id]/export/docx/route.ts       Download the document as .docx
+  doc/[id]/version/[versionId]/page.tsx  Read-only snapshot + restore
   api/health/route.ts         Readiness check
 lib/
   access.ts             resolveAccess() + permission helpers (pure, tested)
+  authz.ts              getDocAccess()/assertAccess() — shared DB access checks
   sanitize.ts           allow-list HTML sanitizer (pure, tested)
   import.ts             file import -> sanitized HTML (.txt/.md pure + tested; .docx via mammoth)
   export.ts             title/body -> export HTML + .docx buffer (filename/html pure + tested)
-  documents.ts          data access + authorization enforcement (Supabase)
+  documents.ts          document data access (Supabase)
+  versions.ts           version history: snapshot / list / restore
+  comments.ts           document comment thread
+  presence.ts           polled presence heartbeat
   session.ts            signed-cookie session
   supabase.ts           server-only service-role client
-components/              editor, toolbar, share panel, cards, ...
+components/              editor, toolbar, presence bar, comments/history/share panels, ...
 supabase/schema.sql     database schema + seed data
 ```
 
@@ -210,6 +236,10 @@ supabase/schema.sql     database schema + seed data
   than Postgres RLS policies (see ARCHITECTURE.md for the trade-off).
 - The editor uses `document.execCommand`. It is deprecated but universally
   supported and keeps the dependency footprint tiny for this scope.
-- Concurrent edits are last-write-wins; there is no realtime collaboration.
+- Presence is polled (~10s), not a websocket; concurrent edits to the body are
+  last-write-wins (autosave), and version snapshots are the safety net rather
+  than an operational-transform / CRDT merge.
+- Comments are document-level, not anchored to a text range, and there is no
+  suggestion / tracked-changes mode.
 - `.docx` import preserves structure and inline formatting but not layout,
   fonts, images, tables, or track-changes. Legacy `.doc` is not supported.

@@ -1,22 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import SharePanel from "@/components/SharePanel";
 import DocumentTools from "@/components/DocumentTools";
-import type { ShareEntry } from "@/lib/types";
+import CommentsPanel from "@/components/CommentsPanel";
+import VersionHistoryPanel from "@/components/VersionHistoryPanel";
+import type { CommentEntry, ShareEntry, VersionSummary } from "@/lib/types";
 
-type Panel = "share" | "tools";
+type Panel = "comments" | "share" | "history" | "tools";
 
 export default function DocumentHeaderActions({
   docId,
   ownerLabel,
   shares,
+  comments,
+  versions,
+  openCommentCount,
   canManage,
   canEdit,
 }: {
   docId: string;
   ownerLabel: string;
   shares: ShareEntry[];
+  comments: CommentEntry[];
+  versions: VersionSummary[];
+  openCommentCount: number;
   canManage: boolean;
   canEdit: boolean;
 }) {
@@ -39,7 +47,7 @@ export default function DocumentHeaderActions({
     };
   }, [open]);
 
-  const tab = (panel: Panel, label: string) => (
+  const tab = (panel: Panel, label: ReactNode) => (
     <button
       type="button"
       aria-expanded={open === panel}
@@ -55,20 +63,39 @@ export default function DocumentHeaderActions({
   );
 
   return (
-    <div ref={ref} className="relative flex items-center gap-2">
+    <div ref={ref} className="relative flex flex-wrap items-center gap-2">
+      {tab(
+        "comments",
+        <>
+          Comments
+          {openCommentCount > 0 && (
+            <span className="ml-1.5 rounded-full bg-zinc-200 px-1.5 text-xs text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">
+              {openCommentCount}
+            </span>
+          )}
+        </>,
+      )}
       {tab("share", "Share")}
+      {tab("history", "History")}
       {tab("tools", "Tools")}
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] drop-shadow-xl">
-          {open === "share" ? (
+        <div className="absolute right-0 top-full z-30 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] drop-shadow-xl">
+          {open === "comments" && (
+            <CommentsPanel docId={docId} comments={comments} />
+          )}
+          {open === "share" && (
             <SharePanel
               docId={docId}
               ownerLabel={ownerLabel}
               shares={shares}
               canManage={canManage}
             />
-          ) : (
+          )}
+          {open === "history" && (
+            <VersionHistoryPanel docId={docId} versions={versions} canEdit={canEdit} />
+          )}
+          {open === "tools" && (
             <DocumentTools docId={docId} canEdit={canEdit} canManage={canManage} />
           )}
         </div>

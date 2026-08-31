@@ -19,12 +19,20 @@ import {
   MAX_IMPORT_BYTES,
   SUPPORTED_IMPORT_EXTENSIONS,
 } from "@/lib/import";
+import { restoreVersion, saveNamedVersion } from "@/lib/versions";
+import {
+  addComment,
+  deleteComment as deleteCommentRow,
+  setCommentResolved,
+} from "@/lib/comments";
+import { heartbeat, leave, type PresenceMode } from "@/lib/presence";
 import {
   clearSessionCookie,
+  getCurrentUser,
   requireUser,
   setSessionCookie,
 } from "@/lib/session";
-import type { Permission } from "@/lib/types";
+import type { Permission, PresencePerson } from "@/lib/types";
 
 export type FormResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -201,4 +209,104 @@ export async function unshareDocumentAction(formData: FormData): Promise<void> {
   await unshareDocument(docId, user.id, targetUserId);
   revalidatePath(`/doc/${docId}`);
   revalidatePath("/");
+}
+
+// ---------------------------------------------------------------------------
+// Version history
+// ---------------------------------------------------------------------------
+
+export async function saveVersionAction(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const user = await requireUser();
+  const docId = String(formData.get("docId") ?? "");
+  const note = String(formData.get("note") ?? "");
+  try {
+    await saveNamedVersion(docId, user.id, note);
+  } catch (err) {
+    return { ok: false, error: errText(err) };
+  }
+  revalidatePath(`/doc/${docId}`);
+  return { ok: true, message: "Version saved." };
+}
+
+export async function restoreVersionAction(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const user = await requireUser();
+  const docId = String(formData.get("docId") ?? "");
+  const versionId = String(formData.get("versionId") ?? "");
+  try {
+    await restoreVersion(docId, user.id, versionId);
+  } catch (err) {
+    return { ok: false, error: errText(err) };
+  }
+  revalidatePath(`/doc/${docId}`);
+  return { ok: true, message: "Version restored." };
+}
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+export async function addCommentAction(
+  _prev: FormResult,
+  formData: FormData,
+): Promise<FormResult> {
+  const user = await requireUser();
+  const docId = String(formData.get("docId") ?? "");
+  const body = String(formData.get("body") ?? "");
+  try {
+    await addComment(docId, user.id, body);
+  } catch (err) {
+    return { ok: false, error: errText(err) };
+  }
+  revalidatePath(`/doc/${docId}`);
+  return { ok: true };
+}
+
+export async function resolveCommentAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const docId = String(formData.get("docId") ?? "");
+  const commentId = String(formData.get("commentId") ?? "");
+  const resolved = String(formData.get("resolved") ?? "") === "true";
+  await setCommentResolved(docId, user.id, commentId, resolved);
+  revalidatePath(`/doc/${docId}`);
+}
+
+export async function deleteCommentAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const docId = String(formData.get("docId") ?? "");
+  const commentId = String(formData.get("commentId") ?? "");
+  await deleteCommentRow(docId, user.id, commentId);
+  revalidatePath(`/doc/${docId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Presence (called directly from the client on a ~10s interval)
+// ---------------------------------------------------------------------------
+
+export async function presenceHeartbeatAction(
+  docId: string,
+  mode: PresenceMode,
+): Promise<{ ok: true; people: PresencePerson[] } | { ok: false; error: string }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { ok: false, error: "Signed out." };
+    const people = await heartbeat(docId, user.id, mode);
+    return { ok: true, people };
+  } catch (err) {
+    return { ok: false, error: errText(err) };
+  }
+}
+
+export async function presenceLeaveAction(docId: string): Promise<void> {
+  try {
+    const user = await getCurrentUser();
+    if (user) await leave(docId, user.id);
+  } catch {
+    /* best effort on unload */
+  }
 }
