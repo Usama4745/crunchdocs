@@ -1,36 +1,188 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CrunchDocs
 
-## Getting Started
+A small full-stack document editor: create rich-text documents in the browser,
+import `.txt` / `.md` files, and share documents with other people with
+view-only or edit access. Built with Next.js 16 (App Router) and Supabase
+(Postgres).
 
-First, run the development server:
+- **Live demo:** _add your Vercel URL here after deploying (see [Deployment](#deployment))_
+- **Demo accounts:** `alice@crunchdocs.test`, `bob@crunchdocs.test`,
+  `carol@crunchdocs.test` (no password — this is a lightweight demo login).
 
+---
+
+## Features
+
+### 1. Document creation & editing
+- Create a blank document, rename it inline, edit it in the browser, and reopen
+  it later — content is persisted to Postgres.
+- Rich-text formatting in the toolbar: **bold**, _italic_, underline,
+  strikethrough, H1/H2/H3 + body text, block quote, bulleted and numbered
+  lists, and clear-formatting.
+- **Autosave** (debounced ~0.8s) plus a manual **Save now** button and a
+  save-status indicator. Content is also flushed when the tab is hidden or
+  closed.
+
+### 2. File upload / import
+- **Import a file as a new document** from the dashboard, or **append a file to
+  an open document** from the document's Tools panel.
+- **Supported types: `.txt`, `.md` / `.markdown` only, up to 1 MB.** Anything
+  else is rejected with a message in the UI. Markdown support covers headings,
+  bold/italic/inline-code, ordered/unordered lists, and block quotes; richer
+  Markdown (tables, links, images, code fences) is imported as plain text.
+
+### 3. Sharing
+- Every document has a single **owner**.
+- The owner can **share by email** with `view` or `edit` permission, change or
+  remove access at any time. Sharing with an unknown email creates that account
+  automatically, so you can immediately sign in as that address to see the
+  shared view.
+- The dashboard separates **"Owned by you"** from **"Shared with you"**, and
+  each document shows an access badge (`Owner` / `Can edit` / `View only`).
+- View-only collaborators get a read-only rendering; the editor and management
+  tools are hidden.
+
+### 4. Persistence
+- Documents, users, and shares are stored in Supabase Postgres. Content is
+  stored as sanitized HTML, so formatting survives refresh and reopen.
+- Sharing state is queried on every load, so revoking access takes effect
+  immediately.
+
+---
+
+## Tech stack
+
+| Concern        | Choice                                                            |
+| -------------- | --------------------------------------------------------------- |
+| Framework      | Next.js 16 (App Router, React Server Components, Server Actions) |
+| Language       | TypeScript                                                      |
+| Styling        | Tailwind CSS v4                                                  |
+| Database       | Supabase (Postgres) via `@supabase/supabase-js`                 |
+| Auth           | Lightweight signed-cookie session ("sign in as an email")       |
+| Editor         | `contentEditable` + `document.execCommand` + allow-list sanitizer |
+| Tests          | Vitest                                                          |
+| Deployment     | Vercel (any Node host works)                                    |
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for what was prioritized and why.
+
+---
+
+## Setup
+
+### Prerequisites
+- Node.js 20+
+- A Supabase project (free tier is fine)
+
+### 1. Install
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Create the database schema
+In the Supabase dashboard, open **SQL Editor** and run the contents of
+[`supabase/schema.sql`](./supabase/schema.sql). It creates the `docs_users`,
+`docs_documents`, and `docs_document_shares` tables (all prefixed with `docs_`
+so they can share a Supabase project with other tables), an `updated_at`
+trigger, enables RLS (the app uses the service role key and enforces access in
+application code), and seeds the three demo accounts. The script is safe to
+re-run.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Configure environment variables
+```bash
+cp .env.example .env.local
+```
+Fill in:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable                        | Where to find it                                             |
+| ------------------------------- | ----------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase → Project Settings → API → Project URL             |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Supabase → Project Settings → API → `service_role` secret   |
+| `APP_SECRET`                    | Any long random string: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 
-## Learn More
+> The service role key is used **only on the server** (`lib/supabase.ts` imports
+> `server-only`). Do not prefix it with `NEXT_PUBLIC_`.
 
-To learn more about Next.js, take a look at the following resources:
+### 4. Run
+```bash
+npm run dev
+```
+Open http://localhost:3000, sign in as `alice@crunchdocs.test` (or any email),
+and start creating documents.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+To demo sharing: as Alice, create a document and share it with
+`bob@crunchdocs.test` (edit) and `carol@crunchdocs.test` (view). Sign out, sign
+back in as Bob or Carol, and the document appears under **Shared with you** with
+the matching access level.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Tests
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm test          # run once
+npm run test:watch
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The suite (Vitest, 31 assertions) covers the security- and correctness-critical
+pure logic:
+
+- **`lib/sanitize.test.ts`** – the HTML sanitizer: strips `<script>`/`<style>`,
+  event-handler attributes, `javascript:` URLs, `<img>`/`<iframe>` and other
+  non-text tags; keeps and normalizes allowed formatting tags. This is the
+  boundary that makes it safe to store user HTML and show it to a person it was
+  shared with.
+- **`lib/access.test.ts`** – `resolveAccess`, the single source of truth for
+  authorization (owner vs. edit vs. view vs. no access, signed-out, duplicate
+  grants).
+- **`lib/import.test.ts`** – Markdown/plain-text → HTML conversion, including
+  that imported files cannot inject markup.
+
+---
+
+## Deployment
+
+The app runs on any Node host. Instructions for **Vercel**:
+
+1. Push this repo to GitHub and **Import** it in Vercel (framework auto-detected
+   as Next.js).
+2. Add the three environment variables from `.env.example` in
+   **Project Settings → Environment Variables** (Production + Preview).
+3. Make sure `supabase/schema.sql` has been run against the Supabase project the
+   keys point at.
+4. Deploy. The health check `GET /api/health` returns
+   `{"status":"ok","supabaseConfigured":true}` when the environment is wired up.
+
+No build-time secrets are required — pages that need data render on demand.
+
+---
+
+## Project layout
+
+```
+app/
+  actions.ts            Server Actions (auth, CRUD, sharing, import)
+  page.tsx              Dashboard: owned vs. shared documents
+  login/page.tsx        Sign-in
+  doc/[id]/page.tsx     Editor / read-only viewer + sharing + tools
+  api/health/route.ts   Readiness check
+lib/
+  access.ts             resolveAccess() + permission helpers (pure, tested)
+  sanitize.ts           allow-list HTML sanitizer (pure, tested)
+  import.ts             file import -> HTML (pure, tested)
+  documents.ts          data access + authorization enforcement (Supabase)
+  session.ts            signed-cookie session
+  supabase.ts           server-only service-role client
+components/              editor, toolbar, share panel, cards, ...
+supabase/schema.sql     database schema + seed data
+```
+
+## Known limitations (scope)
+
+- Auth is a demo: an email + signed cookie, no password. Fine for evaluating the
+  sharing model; not production auth.
+- Authorization is enforced in application code with the service-role key rather
+  than Postgres RLS policies (see ARCHITECTURE.md for the trade-off).
+- The editor uses `document.execCommand`. It is deprecated but universally
+  supported and keeps the dependency footprint tiny for this scope.
+- Concurrent edits are last-write-wins; there is no realtime collaboration.
+- Import supports `.txt` and `.md` only (no `.docx`).
