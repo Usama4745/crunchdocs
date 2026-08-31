@@ -4,7 +4,7 @@ import { sanitizeHtml } from "@/lib/sanitize";
 export default function DocViewer({ html }: { html: string }) {
   const safe = sanitizeHtml(html) || "<p></p>";
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="min-h-[72vh] rounded-xl bg-white p-8 shadow-xl shadow-zinc-300/40 ring-1 ring-zinc-200/80 sm:p-14 dark:bg-zinc-900 dark:shadow-black/40 dark:ring-zinc-800">
       <div className="doc-view" dangerouslySetInnerHTML={{ __html: safe }} />
     </div>
   );

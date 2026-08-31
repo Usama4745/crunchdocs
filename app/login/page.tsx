@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import SignInForm from "@/components/SignInForm";
+import ThemeToggle from "@/components/ThemeToggle";
 import { getCurrentUser } from "@/lib/session";
 import { listUsers } from "@/lib/documents";
 
@@ -20,9 +21,12 @@ export default async function LoginPage() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 px-4 py-16">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Crunch<span className="text-zinc-400">Docs</span>
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Crunch<span className="text-zinc-400">Docs</span>
+          </h1>
+          <ThemeToggle />
+        </div>
         <p className="text-sm text-zinc-500">
           Sign in with an email to start writing. This is a lightweight demo
           login — no password, just pick or type an address.

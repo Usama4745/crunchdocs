@@ -14,7 +14,7 @@ import {
   getDocumentForUser,
 } from "@/lib/documents";
 import {
-  importFileToHtml,
+  convertUploadToHtml,
   titleFromFileName,
   MAX_IMPORT_BYTES,
   SUPPORTED_IMPORT_EXTENSIONS,
@@ -32,6 +32,22 @@ function errText(err: unknown): string {
   if (err instanceof AppError) return err.message;
   if (err instanceof Error) return err.message;
   return "Something went wrong. Please try again.";
+}
+
+/** Validate an uploaded import file from FormData. */
+function readImportFile(formData: FormData): { file: File } | { error: string } {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Choose a file to import." };
+  }
+  if (file.size > MAX_IMPORT_BYTES) {
+    return { error: `That file is larger than ${Math.round(MAX_IMPORT_BYTES / 1_000_000)} MB.` };
+  }
+  const name = file.name.toLowerCase();
+  if (!SUPPORTED_IMPORT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+    return { error: `Unsupported file type. Allowed: ${SUPPORTED_IMPORT_EXTENSIONS.join(", ")}` };
+  }
+  return { file };
 }
 
 // ---------------------------------------------------------------------------
@@ -70,27 +86,14 @@ export async function importDocumentAction(
   formData: FormData,
 ): Promise<FormResult> {
   const user = await requireUser();
-  const file = formData.get("file");
+  const picked = readImportFile(formData);
+  if ("error" in picked) return { ok: false, error: picked.error };
   let newId: string | null = null;
 
   try {
-    if (!(file instanceof File) || file.size === 0) {
-      return { ok: false, error: "Choose a file to import." };
-    }
-    if (file.size > MAX_IMPORT_BYTES) {
-      return { ok: false, error: "That file is larger than 1 MB." };
-    }
-    const name = file.name.toLowerCase();
-    if (!SUPPORTED_IMPORT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-      return {
-        ok: false,
-        error: `Unsupported file type. Allowed: ${SUPPORTED_IMPORT_EXTENSIONS.join(", ")}`,
-      };
-    }
-    const text = await file.text();
-    const html = importFileToHtml(file.name, text);
+    const html = await convertUploadToHtml(picked.file);
     const doc = await createDocument(user.id, {
-      title: titleFromFileName(file.name),
+      title: titleFromFileName(picked.file.name),
       contentHtml: html,
     });
     newId = doc.id;
@@ -108,27 +111,14 @@ export async function importIntoDocumentAction(
 ): Promise<FormResult> {
   const user = await requireUser();
   const docId = String(formData.get("docId") ?? "");
-  const file = formData.get("file");
+  const picked = readImportFile(formData);
+  if ("error" in picked) return { ok: false, error: picked.error };
 
   try {
-    if (!(file instanceof File) || file.size === 0) {
-      return { ok: false, error: "Choose a file to import." };
-    }
-    if (file.size > MAX_IMPORT_BYTES) {
-      return { ok: false, error: "That file is larger than 1 MB." };
-    }
-    const name = file.name.toLowerCase();
-    if (!SUPPORTED_IMPORT_EXTENSIONS.some((ext) => name.endsWith(ext))) {
-      return {
-        ok: false,
-        error: `Unsupported file type. Allowed: ${SUPPORTED_IMPORT_EXTENSIONS.join(", ")}`,
-      };
-    }
     const detail = await getDocumentForUser(docId, user.id);
     if (!detail) return { ok: false, error: "Document not found." };
 
-    const text = await file.text();
-    const importedHtml = importFileToHtml(file.name, text);
+    const importedHtml = await convertUploadToHtml(picked.file);
     const merged = `${detail.doc.content_html}${importedHtml}`;
     await updateDocumentContent(docId, user.id, merged);
   } catch (err) {

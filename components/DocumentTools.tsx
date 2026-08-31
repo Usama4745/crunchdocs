@@ -52,13 +52,14 @@ export default function DocumentTools({
         <form action={importAction} className="flex flex-col gap-2">
           <input type="hidden" name="docId" value={docId} />
           <label className="text-sm text-zinc-500">
-            Append a <strong>.txt</strong> / <strong>.md</strong> file to this document
+            Append a <strong>.txt</strong>, <strong>.md</strong> or{" "}
+            <strong>.docx</strong> file to this document
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
               name="file"
               type="file"
-              accept=".txt,.md,.markdown,text/plain,text/markdown"
+              accept=".txt,.md,.markdown,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               required
               className="min-w-0 flex-1 text-sm file:mr-2 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 dark:file:bg-zinc-800"
             />

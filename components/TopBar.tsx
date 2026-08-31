@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signOutAction } from "@/app/actions";
+import ThemeToggle from "@/components/ThemeToggle";
 import type { User } from "@/lib/types";
 
 export default function TopBar({ user }: { user: User }) {
@@ -10,6 +11,7 @@ export default function TopBar({ user }: { user: User }) {
           Crunch<span className="text-zinc-400">Docs</span>
         </Link>
         <div className="flex items-center gap-3 text-sm">
+          <ThemeToggle />
           <span className="text-zinc-500" title={user.email}>
             {user.display_name || user.email}
           </span>

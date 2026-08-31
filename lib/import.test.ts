@@ -3,7 +3,10 @@ import {
   markdownToHtml,
   plainTextToHtml,
   importFileToHtml,
+  convertUploadToHtml,
+  isDocx,
   titleFromFileName,
+  SUPPORTED_IMPORT_EXTENSIONS,
 } from "./import";
 
 describe("markdownToHtml", () => {
@@ -72,5 +75,29 @@ describe("titleFromFileName", () => {
   it("derives a readable title", () => {
     expect(titleFromFileName("my-project_notes.md")).toBe("my project notes");
     expect(titleFromFileName("draft.txt")).toBe("draft");
+    expect(titleFromFileName("Quarterly Report.docx")).toBe("Quarterly Report");
+  });
+});
+
+describe("upload routing", () => {
+  it("advertises the supported extensions including .docx", () => {
+    expect(SUPPORTED_IMPORT_EXTENSIONS).toContain(".txt");
+    expect(SUPPORTED_IMPORT_EXTENSIONS).toContain(".md");
+    expect(SUPPORTED_IMPORT_EXTENSIONS).toContain(".docx");
+  });
+
+  it("recognizes .docx by name, case-insensitively", () => {
+    expect(isDocx("report.docx")).toBe(true);
+    expect(isDocx("REPORT.DOCX")).toBe(true);
+    expect(isDocx("notes.md")).toBe(false);
+    expect(isDocx("archive.docx.txt")).toBe(false);
+  });
+
+  it("routes a text File through the markdown/plain-text converter", async () => {
+    const md = new File(["# Title\n\n- a\n- b"], "notes.md", { type: "text/markdown" });
+    expect(await convertUploadToHtml(md)).toBe("<h1>Title</h1><ul><li>a</li><li>b</li></ul>");
+
+    const txt = new File(["hello world"], "notes.txt", { type: "text/plain" });
+    expect(await convertUploadToHtml(txt)).toBe("<p>hello world</p>");
   });
 });

@@ -22,14 +22,24 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 - **Autosave** (debounced ~0.8s) plus a manual **Save now** button and a
   save-status indicator. Content is also flushed when the tab is hidden or
   closed.
+- **Light / dark theme toggle** in the header. Defaults to the OS setting on
+  first visit; an explicit choice is remembered in `localStorage` and applied
+  before first paint (no flash).
 
 ### 2. File upload / import
 - **Import a file as a new document** from the dashboard, or **append a file to
-  an open document** from the document's Tools panel.
-- **Supported types: `.txt`, `.md` / `.markdown` only, up to 1 MB.** Anything
-  else is rejected with a message in the UI. Markdown support covers headings,
-  bold/italic/inline-code, ordered/unordered lists, and block quotes; richer
-  Markdown (tables, links, images, code fences) is imported as plain text.
+  an open document** from the document's Tools panel. Either way the file is
+  converted to editable rich text.
+- **Supported types: `.txt`, `.md` / `.markdown`, and `.docx`, up to 5 MB.**
+  Anything else is rejected with a message in the UI.
+  - `.docx` is converted with [`mammoth`](https://github.com/mwilliamson/mammoth.js):
+    headings, bold/italic/underline, lists, and block quotes carry over; images,
+    tables, and other unsupported constructs are dropped.
+  - Markdown support covers headings, bold/italic/inline-code,
+    ordered/unordered lists, and block quotes; richer Markdown (tables, links,
+    images, code fences) is imported as plain text.
+- All imported HTML passes through the same allow-list sanitizer as editor
+  content, so an uploaded file can't inject markup or scripts.
 
 ### 3. Sharing
 - Every document has a single **owner**.
@@ -60,6 +70,7 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 | Database       | Supabase (Postgres) via `@supabase/supabase-js`                 |
 | Auth           | Lightweight signed-cookie session ("sign in as an email")       |
 | Editor         | `contentEditable` + `document.execCommand` + allow-list sanitizer |
+| `.docx` import | `mammoth`                                                       |
 | Tests          | Vitest                                                          |
 | Deployment     | Vercel (any Node host works)                                    |
 
@@ -168,7 +179,7 @@ app/
 lib/
   access.ts             resolveAccess() + permission helpers (pure, tested)
   sanitize.ts           allow-list HTML sanitizer (pure, tested)
-  import.ts             file import -> HTML (pure, tested)
+  import.ts             file import -> sanitized HTML (.txt/.md pure + tested; .docx via mammoth)
   documents.ts          data access + authorization enforcement (Supabase)
   session.ts            signed-cookie session
   supabase.ts           server-only service-role client
@@ -185,4 +196,5 @@ supabase/schema.sql     database schema + seed data
 - The editor uses `document.execCommand`. It is deprecated but universally
   supported and keeps the dependency footprint tiny for this scope.
 - Concurrent edits are last-write-wins; there is no realtime collaboration.
-- Import supports `.txt` and `.md` only (no `.docx`).
+- `.docx` import preserves structure and inline formatting but not layout,
+  fonts, images, tables, or track-changes. Legacy `.doc` is not supported.

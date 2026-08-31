@@ -54,7 +54,7 @@ export default function NewDocumentControls() {
             ref={fileRef}
             name="file"
             type="file"
-            accept=".txt,.md,.markdown,text/plain,text/markdown"
+            accept=".txt,.md,.markdown,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             required
             className="text-sm file:mr-2 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-sm dark:file:bg-zinc-800"
           />
@@ -64,8 +64,8 @@ export default function NewDocumentControls() {
 
       <p className="text-xs text-zinc-500">
         Supported import types: <strong>.txt</strong>, <strong>.md</strong> /{" "}
-        <strong>.markdown</strong> (max 1&nbsp;MB). The file becomes a new
-        editable document.
+        <strong>.markdown</strong>, <strong>.docx</strong> (max 5&nbsp;MB). The
+        file is converted to a new editable rich-text document.
       </p>
 
       {importState.ok === false && (

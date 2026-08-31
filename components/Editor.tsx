@@ -164,8 +164,8 @@ export default function Editor({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-zinc-200 bg-white/90 p-1.5 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/90">
+    <div className="flex flex-col gap-4">
+      <div className="sticky top-3 z-10 flex flex-wrap items-center gap-1 rounded-xl border border-zinc-200 bg-white/85 p-1.5 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/85">
         {TOOLS.map((group, gi) => (
           <div key={gi} className="flex items-center gap-1">
             {gi > 0 && <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-700" />}
@@ -204,7 +204,7 @@ export default function Editor({
 
       <div
         ref={ref}
-        className="doc-content min-h-[60vh] rounded-lg border border-zinc-200 bg-white p-6 shadow-sm focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900"
+        className="doc-content min-h-[72vh] rounded-xl bg-white p-8 shadow-xl shadow-zinc-300/40 ring-1 ring-zinc-200/80 sm:p-14 dark:bg-zinc-900 dark:shadow-black/40 dark:ring-zinc-800"
         contentEditable
         suppressContentEditableWarning
         spellCheck

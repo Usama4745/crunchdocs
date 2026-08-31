@@ -1,8 +1,17 @@
 import { sanitizeHtml } from "./sanitize";
 
 /** File extensions accepted by the import feature. Keep in sync with the UI/README. */
-export const SUPPORTED_IMPORT_EXTENSIONS = [".txt", ".md", ".markdown"] as const;
-export const MAX_IMPORT_BYTES = 1_000_000; // 1 MB
+export const SUPPORTED_IMPORT_EXTENSIONS = [
+  ".txt",
+  ".md",
+  ".markdown",
+  ".docx",
+] as const;
+export const MAX_IMPORT_BYTES = 5_000_000; // 5 MB (.docx files carry more overhead)
+
+export function isDocx(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith(".docx");
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -111,12 +120,38 @@ export function plainTextToHtml(text: string): string {
   return sanitizeHtml(html) || "<p></p>";
 }
 
+/** Text-based import (.txt / .md). `.docx` goes through `docxToHtml`. */
 export function importFileToHtml(fileName: string, contents: string): string {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
     return markdownToHtml(contents);
   }
   return plainTextToHtml(contents);
+}
+
+/**
+ * .docx -> HTML via `mammoth`, which emits semantic tags (headings, bold,
+ * italic, lists, block quotes). The result is run through the same allow-list
+ * sanitizer as everything else, so unsupported constructs (images, tables,
+ * comments) are dropped rather than trusted.
+ */
+export async function docxToHtml(buffer: Buffer): Promise<string> {
+  const mammoth = (await import("mammoth")).default;
+  const { value } = await mammoth.convertToHtml({ buffer });
+  return sanitizeHtml(value) || "<p></p>";
+}
+
+/**
+ * Convert any supported upload (a browser `File`) to sanitized HTML.
+ * Used by the Server Actions; `importFileToHtml` remains the sync entry point
+ * for text content and unit tests.
+ */
+export async function convertUploadToHtml(file: File): Promise<string> {
+  if (isDocx(file.name)) {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    return docxToHtml(buffer);
+  }
+  return importFileToHtml(file.name, await file.text());
 }
 
 /** Best-effort document title from an uploaded file name. */

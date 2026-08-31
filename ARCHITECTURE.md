@@ -10,9 +10,10 @@ Short version of what I prioritized, and the trade-offs behind each choice.
 2. **Safe round-tripping of rich text.** Storing user-authored HTML and later
    showing it to *a different user* is an XSS sink. The sanitizer is the second
    thing I made airtight and tested.
-3. **Small, legible surface area.** One database, few dependencies (just
-   `@supabase/supabase-js` at runtime), no editor framework. Everything a
-   reviewer needs to read fits in `lib/` plus a handful of components.
+3. **Small, legible surface area.** One database, two runtime dependencies
+   (`@supabase/supabase-js`, and `mammoth` for `.docx` import), no editor
+   framework. Everything a reviewer needs to read fits in `lib/` plus a handful
+   of components.
 
 ## Request flow
 
@@ -95,13 +96,24 @@ through `docs_document_shares`.
 `updated_at` is maintained by a trigger so autosave ordering is trustworthy.
 
 ### File import
-`.txt` / `.md` only, ≤1 MB, validated by extension **and** size in the Server
-Action. Markdown is converted by a ~60-line function (headings, emphasis,
-inline code, lists, block quotes) rather than pulling in a Markdown library;
-anything it doesn't recognize degrades to a paragraph. The converter escapes
-HTML first and the output goes through the sanitizer, so an uploaded file can't
-inject markup. Two entry points reuse the same code: "import as new document"
-and "append to this document".
+`.txt`, `.md`, and `.docx`, ≤5 MB, validated by extension **and** size in the
+Server Action (`readImportFile`).
+
+- **Markdown** is converted by a ~60-line function (headings, emphasis, inline
+  code, lists, block quotes) rather than pulling in a Markdown library; anything
+  it doesn't recognize degrades to a paragraph. The converter escapes HTML
+  first.
+- **`.docx`** is converted with `mammoth`, the one library worth the dependency
+  here — reimplementing OOXML parsing is not in scope. It's a lazy
+  `import("mammoth")` inside the converter and listed in
+  `serverExternalPackages`, so it only loads when a `.docx` is actually
+  uploaded and never touches the client bundle or the test path.
+
+Every path's output goes through the same allow-list sanitizer, so an uploaded
+file can't inject markup and unsupported `.docx` constructs (images, tables,
+comments) are dropped rather than trusted. `convertUploadToHtml(file)` is the
+single entry point; both "import as new document" and "append to this document"
+call it.
 
 ## Testing strategy
 
@@ -116,6 +128,7 @@ PostgREST and was out of scope for the time budget.
 
 - Supabase Auth + real RLS policies (magic-link is low-friction).
 - Realtime presence / CRDT so concurrent editors don't last-write-wins.
-- Move import parsing to accept `.docx` (via `mammoth`).
+- Round-trip `.docx` fixtures through a test (the binary path is currently
+  covered only indirectly, via the sanitizer).
 - Optimistic UI for rename/share and a toast system instead of inline text.
 - E2E test (Playwright) covering the share → sign-in-as → see-shared-doc loop.

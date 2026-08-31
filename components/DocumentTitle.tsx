@@ -25,7 +25,11 @@ export default function DocumentTitle({
   }, [state]);
 
   if (!canRename) {
-    return <h1 className="text-2xl font-semibold">{title || "Untitled document"}</h1>;
+    return (
+      <h1 className="truncate text-2xl font-semibold" title={title || "Untitled document"}>
+        {title || "Untitled document"}
+      </h1>
+    );
   }
 
   const submitIfChanged = () => {
