@@ -11,10 +11,10 @@ Short version of what I prioritized, and the trade-offs behind each choice.
    showing it to *a different user* is an XSS sink. The sanitizer is the second
    thing I made airtight and tested.
 3. **Small, legible surface area.** One database, no editor framework. Runtime
-   dependencies beyond the framework: `@supabase/supabase-js`, `mammoth`
-   (`.docx` import), and `html-to-docx` (`.docx` export) — the last two lazy-
-   loaded and server-external. Everything a reviewer needs to read fits in
-   `lib/` plus a handful of components.
+   dependencies beyond the framework: `@supabase/supabase-js`; `mammoth`
+   (`.docx` import, lazy + server-external); and `docx` + `node-html-parser`
+   (`.docx` export, lazy). Everything a reviewer needs to read fits in `lib/`
+   plus a handful of components.
 
 ## Request flow
 
@@ -126,8 +126,14 @@ call it.
 - **`.docx`** — a **Route Handler** (`GET /doc/[id]/export/docx`), not a Server
   Action, because the response is a binary file download with
   `Content-Disposition`. It checks the cookie session and `getDocumentForUser`
-  (so authorization is identical to viewing), then `html-to-docx` renders the
-  buffer. Lazy-imported and in `serverExternalPackages`, like `mammoth`.
+  (so authorization is identical to viewing), then generates the file. Because
+  the stored HTML is a tiny attribute-free allow-list, `htmlToDocxBuffer` walks
+  it with `node-html-parser` and emits OOXML directly with the `docx` library
+  (headings, bold/italic/underline/strike, bullet + numbered lists, block
+  quotes, line breaks). An earlier attempt with a generic `html-to-docx`
+  converter produced packages Word rejected for some documents; hand-emitting
+  from the known tag set removes that whole failure mode and the test asserts a
+  complete zip (PK header **and** end-of-central-directory trailer).
 - **PDF** — a dedicated print route (`/doc/[id]/print`) renders just the
   document with a print stylesheet and calls `window.print()`; the user picks
   "Save as PDF". This uses the browser's own renderer — selectable text, real

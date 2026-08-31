@@ -36,10 +36,27 @@ describe("buildExportHtml", () => {
 });
 
 describe("htmlToDocxBuffer", () => {
-  it("produces a non-empty .docx (zip) buffer", async () => {
-    const buf = await htmlToDocxBuffer("Report", "<h1>Hi</h1><p><strong>bold</strong></p>");
+  it("produces a valid .docx (zip) buffer for the full formatting set", async () => {
+    const html =
+      "<h1>Title</h1><h2>Sub</h2>" +
+      "<p>plain <strong>bold <em>both</em></strong> <u>under</u> <s>strike</s></p>" +
+      "<p></p>" + // empty paragraph must not break generation
+      "<blockquote>quoted &amp; escaped &lt;tag&gt;</blockquote>" +
+      "<ul><li>one</li><li>two</li></ul>" +
+      "<ol><li>first</li><li>second</li></ol>" +
+      "<p>line one<br />line two</p>";
+    const buf = await htmlToDocxBuffer("My Report", html);
     expect(buf.length).toBeGreaterThan(1000);
     // .docx is a zip archive -> starts with the "PK" local file header.
+    expect(buf[0]).toBe(0x50);
+    expect(buf[1]).toBe(0x4b);
+    // ...and ends with the zip End-Of-Central-Directory signature (PK\x05\x06).
+    const tail = buf.subarray(-22);
+    expect(tail.includes(Buffer.from([0x50, 0x4b, 0x05, 0x06]))).toBe(true);
+  }, 20_000);
+
+  it("handles an empty document without throwing", async () => {
+    const buf = await htmlToDocxBuffer("", "");
     expect(buf[0]).toBe(0x50);
     expect(buf[1]).toBe(0x4b);
   }, 20_000);

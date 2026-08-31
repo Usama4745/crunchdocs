@@ -27,7 +27,9 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
   before first paint (no flash).
 - **Export** from the document's Tools panel (owners, editors, and viewers):
   - **Download `.docx`** — `GET /doc/[id]/export/docx` renders the current
-    content to a Word file with [`html-to-docx`](https://www.npmjs.com/package/html-to-docx).
+    content to a Word file: the allow-list HTML is walked with `node-html-parser`
+    and emitted as OOXML with [`docx`](https://www.npmjs.com/package/docx), so
+    Word always opens it.
   - **Print / PDF** — opens `/doc/[id]/print`, a clean print view that triggers
     the browser print dialog; choose "Save as PDF" as the destination. Uses the
     browser's own renderer (selectable text, no extra dependency) rather than a
@@ -96,7 +98,7 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 | Auth           | Lightweight signed-cookie session ("sign in as an email")       |
 | Editor         | `contentEditable` + `document.execCommand` + allow-list sanitizer |
 | `.docx` import | `mammoth`                                                       |
-| `.docx` export | `html-to-docx`                                                 |
+| `.docx` export | `docx` + `node-html-parser` (allow-list HTML → OOXML)          |
 | PDF export     | browser print-to-PDF (`/doc/[id]/print` + `window.print()`)     |
 | Presence       | polled heartbeat table (~10s), no websockets                    |
 | Tests          | Vitest                                                          |
