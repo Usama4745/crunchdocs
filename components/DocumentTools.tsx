@@ -80,6 +80,28 @@ export default function DocumentTools({
         </p>
       )}
 
+      <div className="flex flex-col gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          Export
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={`/doc/${docId}/export/docx`}
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Download .docx
+          </a>
+          <a
+            href={`/doc/${docId}/print`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Print / PDF
+          </a>
+        </div>
+      </div>
+
       {canManage && (
         <form
           action={deleteDocumentAction}

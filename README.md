@@ -25,6 +25,13 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 - **Light / dark theme toggle** in the header. Defaults to the OS setting on
   first visit; an explicit choice is remembered in `localStorage` and applied
   before first paint (no flash).
+- **Export** from the document's Tools panel (owners, editors, and viewers):
+  - **Download `.docx`** — `GET /doc/[id]/export/docx` renders the current
+    content to a Word file with [`html-to-docx`](https://www.npmjs.com/package/html-to-docx).
+  - **Print / PDF** — opens `/doc/[id]/print`, a clean print view that triggers
+    the browser print dialog; choose "Save as PDF" as the destination. Uses the
+    browser's own renderer (selectable text, no extra dependency) rather than a
+    bundled headless Chromium.
 
 ### 2. File upload / import
 - **Import a file as a new document** from the dashboard, or **append a file to
@@ -71,6 +78,8 @@ view-only or edit access. Built with Next.js 16 (App Router) and Supabase
 | Auth           | Lightweight signed-cookie session ("sign in as an email")       |
 | Editor         | `contentEditable` + `document.execCommand` + allow-list sanitizer |
 | `.docx` import | `mammoth`                                                       |
+| `.docx` export | `html-to-docx`                                                 |
+| PDF export     | browser print-to-PDF (`/doc/[id]/print` + `window.print()`)     |
 | Tests          | Vitest                                                          |
 | Deployment     | Vercel (any Node host works)                                    |
 
@@ -134,8 +143,8 @@ npm test          # run once
 npm run test:watch
 ```
 
-The suite (Vitest, 31 assertions) covers the security- and correctness-critical
-pure logic:
+The suite (Vitest, 41 assertions) covers the security- and correctness-critical
+logic:
 
 - **`lib/sanitize.test.ts`** – the HTML sanitizer: strips `<script>`/`<style>`,
   event-handler attributes, `javascript:` URLs, `<img>`/`<iframe>` and other
@@ -145,8 +154,11 @@ pure logic:
 - **`lib/access.test.ts`** – `resolveAccess`, the single source of truth for
   authorization (owner vs. edit vs. view vs. no access, signed-out, duplicate
   grants).
-- **`lib/import.test.ts`** – Markdown/plain-text → HTML conversion, including
-  that imported files cannot inject markup.
+- **`lib/import.test.ts`** – Markdown/plain-text → HTML conversion and upload
+  routing, including that imported files cannot inject markup.
+- **`lib/export.test.ts`** – export filename slugging and export-HTML building
+  (title escaped, body sanitized), plus a check that a real `.docx` buffer is
+  produced.
 
 ---
 
@@ -171,15 +183,18 @@ No build-time secrets are required — pages that need data render on demand.
 
 ```
 app/
-  actions.ts            Server Actions (auth, CRUD, sharing, import)
-  page.tsx              Dashboard: owned vs. shared documents
-  login/page.tsx        Sign-in
-  doc/[id]/page.tsx     Editor / read-only viewer + sharing + tools
-  api/health/route.ts   Readiness check
+  actions.ts                  Server Actions (auth, CRUD, sharing, import)
+  page.tsx                    Dashboard: owned vs. shared documents
+  login/page.tsx              Sign-in
+  doc/[id]/page.tsx           Editor / read-only viewer + sharing + tools
+  doc/[id]/print/page.tsx     Clean print view (browser "Save as PDF")
+  doc/[id]/export/docx/route.ts  Download the document as .docx
+  api/health/route.ts         Readiness check
 lib/
   access.ts             resolveAccess() + permission helpers (pure, tested)
   sanitize.ts           allow-list HTML sanitizer (pure, tested)
   import.ts             file import -> sanitized HTML (.txt/.md pure + tested; .docx via mammoth)
+  export.ts             title/body -> export HTML + .docx buffer (filename/html pure + tested)
   documents.ts          data access + authorization enforcement (Supabase)
   session.ts            signed-cookie session
   supabase.ts           server-only service-role client

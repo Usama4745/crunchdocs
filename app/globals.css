@@ -123,3 +123,39 @@ body {
   opacity: 0.4;
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Print / "Save as PDF" — used by /doc/[id]/print
+--------------------------------------------------------------------------- */
+@media print {
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-page {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .doc-view a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .doc-view h1,
+  .doc-view h2,
+  .doc-view h3 {
+    break-after: avoid;
+  }
+}

@@ -10,10 +10,11 @@ Short version of what I prioritized, and the trade-offs behind each choice.
 2. **Safe round-tripping of rich text.** Storing user-authored HTML and later
    showing it to *a different user* is an XSS sink. The sanitizer is the second
    thing I made airtight and tested.
-3. **Small, legible surface area.** One database, two runtime dependencies
-   (`@supabase/supabase-js`, and `mammoth` for `.docx` import), no editor
-   framework. Everything a reviewer needs to read fits in `lib/` plus a handful
-   of components.
+3. **Small, legible surface area.** One database, no editor framework. Runtime
+   dependencies beyond the framework: `@supabase/supabase-js`, `mammoth`
+   (`.docx` import), and `html-to-docx` (`.docx` export) — the last two lazy-
+   loaded and server-external. Everything a reviewer needs to read fits in
+   `lib/` plus a handful of components.
 
 ## Request flow
 
@@ -115,14 +116,37 @@ comments) are dropped rather than trusted. `convertUploadToHtml(file)` is the
 single entry point; both "import as new document" and "append to this document"
 call it.
 
+### Export
+
+`lib/export.ts` builds one `buildExportHtml(title, body)` string (title as an
+`<h1>`, body re-sanitized) that both export paths share.
+
+- **`.docx`** — a **Route Handler** (`GET /doc/[id]/export/docx`), not a Server
+  Action, because the response is a binary file download with
+  `Content-Disposition`. It checks the cookie session and `getDocumentForUser`
+  (so authorization is identical to viewing), then `html-to-docx` renders the
+  buffer. Lazy-imported and in `serverExternalPackages`, like `mammoth`.
+- **PDF** — a dedicated print route (`/doc/[id]/print`) renders just the
+  document with a print stylesheet and calls `window.print()`; the user picks
+  "Save as PDF". This uses the browser's own renderer — selectable text, real
+  pagination, zero new dependencies — instead of shipping a headless Chromium
+  (`puppeteer` + `@sparticuz/chromium`), which is heavy and awkward on
+  serverless. The trade-off is that it needs a user gesture / dialog rather
+  than producing a file on the server.
+
+Both exports are available to anyone with read access, including view-only
+collaborators.
+
 ## Testing strategy
 
 Unit tests target the pure, high-risk logic where a bug is silent and
-dangerous: the sanitizer (security), `resolveAccess` (authorization), and the
-import converter (injection + correctness). These need no database and run in
-~1s. The Supabase-backed code in `lib/documents.ts` is thin orchestration over
-those tested primitives; an integration test there would mostly be testing
-PostgREST and was out of scope for the time budget.
+dangerous: the sanitizer (security), `resolveAccess` (authorization), the
+import converter (injection + correctness), and the export helpers
+(filename/HTML building, plus one check that a real `.docx` buffer comes out).
+These need no database and run in ~2s. The Supabase-backed code in
+`lib/documents.ts` is thin orchestration over those tested primitives; an
+integration test there would mostly be testing PostgREST and was out of scope
+for the time budget.
 
 ## If I had more time
 
